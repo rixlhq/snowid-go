@@ -107,6 +107,7 @@ func (n *Node) Generate() (uint64, error) {
 
 	timestamp := now - n.epochMs
 
+	// #nosec G115 -- timestamp is validated to be < maxTimestamp before this check
 	if uint64(timestamp) >= maxTimestamp {
 		return 0, fmt.Errorf("timestamp out of range: %d", timestamp)
 	}
@@ -146,9 +147,9 @@ func (n *Node) Generate() (uint64, error) {
 // Decompose extracts the timestamp, machine ID and sequence from a snowid ID.
 func (n *Node) Decompose(id uint64) ID {
 	return ID{
-		Timestamp: int64((id >> timestampLeftShift) & timestampMask),
-		MachineID: int64((id >> machineIDShift) & machineIDMask),
-		Sequence:  int64(id & sequenceMask),
+		Timestamp: int64((id >> timestampLeftShift) & timestampMask), // #nosec G115 -- masked to 42 bits
+		MachineID: int64((id >> machineIDShift) & machineIDMask),     // #nosec G115 -- masked to 10 bits
+		Sequence:  int64(id & sequenceMask),                          // #nosec G115 -- masked to 12 bits
 	}
 }
 
@@ -173,6 +174,7 @@ func (n *Node) setMockTime(t *int64) {
 
 // createID composes a 64-bit snowid ID from timestamp and sequence.
 func (n *Node) createID(timestamp, sequence int64) uint64 {
+	// #nosec G115 -- values are masked to their bit ranges, preventing overflow
 	return (uint64(timestamp)&timestampMask)<<timestampLeftShift |
 		n.shiftedMachineID |
 		(uint64(sequence) & sequenceMask)
