@@ -3,7 +3,6 @@ package snowid
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -300,7 +299,7 @@ func TestNode_SequenceOverflow(t *testing.T) {
 	}
 
 	// Set sequence to max value
-	atomic.StoreInt64(&node.sequence, maxSequence)
+	node.sequence = maxSequence
 
 	// Generate should still work by waiting for next millisecond
 	id, err := node.Generate()
@@ -423,7 +422,7 @@ func TestNode_ClockDrift(t *testing.T) {
 	t.Run("large drift", func(t *testing.T) {
 		now := time.Now().UTC().UnixNano() / millisecond
 		timestamp := now - epochMs
-		atomic.StoreInt64(&node.time, timestamp+10) // Set 10ms drift
+		node.time = timestamp + 10 // Set 10ms drift
 
 		id, err := node.Generate()
 		if err != ErrTimeMovedBackwards {
@@ -438,7 +437,7 @@ func TestNode_ClockDrift(t *testing.T) {
 	t.Run("small drift", func(t *testing.T) {
 		now := time.Now().UTC().UnixNano() / millisecond
 		timestamp := now - epochMs
-		atomic.StoreInt64(&node.time, timestamp+1) // Set 1ms drift
+		node.time = timestamp + 1 // Set 1ms drift
 		t.Logf("Current timestamp: %v, Stored timestamp: %v", timestamp, timestamp+1)
 
 		id, err := node.Generate()
@@ -461,7 +460,7 @@ func TestNode_ClockDrift(t *testing.T) {
 	t.Run("normal operation", func(t *testing.T) {
 		now := time.Now().UTC().UnixNano() / millisecond
 		timestamp := now - epochMs
-		atomic.StoreInt64(&node.time, timestamp)
+		node.time = timestamp
 		t.Logf("Set timestamp to: %v", timestamp)
 
 		id, err := node.Generate()
@@ -568,8 +567,8 @@ func TestNode_MaxTimestampBoundary(t *testing.T) {
 	node.setMockTime(&mockTime)
 
 	// Reset node state
-	atomic.StoreInt64(&node.time, 0)
-	atomic.StoreInt64(&node.sequence, 0)
+	node.time = 0
+	node.sequence = 0
 
 	// Try to generate ID with timestamp beyond limit
 	_, err = node.Generate()
@@ -617,8 +616,8 @@ func TestNode_TimeComponentValidation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset node state for each test
-			atomic.StoreInt64(&node.time, 0)
-			atomic.StoreInt64(&node.sequence, 0)
+			node.time = 0
+			node.sequence = 0
 
 			// Set mock time
 			node.setMockTime(&tt.mockTime)
