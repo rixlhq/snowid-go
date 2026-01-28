@@ -160,14 +160,10 @@ type ID struct {
 
 // Decompose extracts the timestamp, machine ID and sequence from a snowid ID.
 func (n *Node) Decompose(id uint64) ID {
-	// Convert to uint64 for bit operations
-	uid := id
-
-	// Extract components using masks
 	return ID{
-		Timestamp: int64((uid >> timestampLeftShift) & timestampMask),
-		MachineID: int64((uid >> machineIDShift) & machineIDMask),
-		Sequence:  int64(uid & sequenceMask),
+		Timestamp: int64((id >> timestampLeftShift) & timestampMask),
+		MachineID: int64((id >> machineIDShift) & machineIDMask),
+		Sequence:  int64(id & sequenceMask),
 	}
 }
 
@@ -175,4 +171,9 @@ func (n *Node) Decompose(id uint64) ID {
 func (n *Node) Time(id uint64) time.Time {
 	decomposed := n.Decompose(id)
 	return n.epoch.Add(time.Duration(decomposed.Timestamp) * time.Millisecond)
+}
+
+// MaxMachineID returns the maximum allowed machine ID (1023 with default 10-bit config).
+func (n *Node) MaxMachineID() int64 {
+	return maxMachineID
 }
