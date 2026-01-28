@@ -1,6 +1,7 @@
 package snowid
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -31,6 +32,7 @@ func TestNewNode(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
+
 				if node.machineID != tt.machineID {
 					t.Errorf("machine ID = %v, want %v", node.machineID, tt.machineID)
 				}
@@ -64,6 +66,7 @@ func TestNewNodeWithEpoch(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
+
 				if !node.epoch.Equal(tt.epoch) {
 					t.Errorf("epoch = %v, want %v", node.epoch, tt.epoch)
 				}
@@ -80,11 +83,13 @@ func TestNode_Generate(t *testing.T) {
 
 	// Generate multiple IDs
 	var ids []uint64
-	for i := 0; i < 100; i++ {
+
+	for range 100 {
 		id, err := node.Generate()
 		if err != nil {
 			t.Errorf("failed to generate ID: %v", err)
 		}
+
 		ids = append(ids, id)
 	}
 
@@ -94,6 +99,7 @@ func TestNode_Generate(t *testing.T) {
 		if seen[id] {
 			t.Error("generated duplicate ID")
 		}
+
 		seen[id] = true
 	}
 
@@ -106,22 +112,24 @@ func TestNode_Generate(t *testing.T) {
 }
 
 func runConcurrentTest(t *testing.T, workers, idsPerWorker int) {
+	t.Helper()
 	node, err := NewNode(1)
 	if err != nil {
 		t.Fatalf("failed to create node: %v", err)
 	}
 
 	var wg sync.WaitGroup
+
 	idChan := make(chan uint64, workers*idsPerWorker)
 	errChan := make(chan error, workers)
 
 	start := time.Now()
 	// Generate IDs concurrently
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < idsPerWorker; j++ {
+	for range workers {
+
+		wg.Go(func() {
+
+			for range idsPerWorker {
 				id, err := node.Generate()
 				if err != nil {
 					// Use non-blocking send or just log
@@ -129,11 +137,13 @@ func runConcurrentTest(t *testing.T, workers, idsPerWorker int) {
 					case errChan <- err:
 					default:
 					}
+
 					return
 				}
+
 				idChan <- id
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -147,11 +157,14 @@ func runConcurrentTest(t *testing.T, workers, idsPerWorker int) {
 
 	// Verify IDs
 	seen := make(map[uint64]bool)
+
 	var ids []uint64
+
 	for id := range idChan {
 		if seen[id] {
 			t.Errorf("duplicate ID found: %d", id)
 		}
+
 		seen[id] = true
 		ids = append(ids, id)
 	}
@@ -174,6 +187,7 @@ func TestNode_GenerateHighConcurrency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping high concurrency test in short mode")
 	}
+
 	runConcurrentTest(t, 100, 1000)
 }
 
@@ -202,6 +216,7 @@ func TestNode_Decompose(t *testing.T) {
 
 	// Check timestamp
 	idTime := node.Time(id)
+
 	now := time.Now()
 	if idTime.After(now) || now.Sub(idTime) > time.Second {
 		t.Errorf("timestamp = %v, should be close to now (%v)", idTime, now)
@@ -214,8 +229,7 @@ func BenchmarkNode_Generate(b *testing.B) {
 		b.Fatalf("failed to create node: %v", err)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_, err := node.Generate()
 		if err != nil {
 			b.Fatalf("failed to generate ID: %v", err)
@@ -249,6 +263,7 @@ func TestNode_TimestampBoundaries(t *testing.T) {
 	// Test maximum timestamp (42 bits)
 	maxTimestamp := int64((uint64(1) << 42) - 1) // Use uint64 for correct bit operation
 	id := node.createID(maxTimestamp, 0)
+
 	decomposed := node.Decompose(id)
 	if decomposed.Timestamp != maxTimestamp {
 		t.Errorf("max timestamp = %v, want %v", decomposed.Timestamp, maxTimestamp)
@@ -256,6 +271,7 @@ func TestNode_TimestampBoundaries(t *testing.T) {
 
 	// Test zero timestamp
 	id = node.createID(0, 0)
+
 	decomposed = node.Decompose(id)
 	if decomposed.Timestamp != 0 {
 		t.Errorf("zero timestamp = %v, want 0", decomposed.Timestamp)
@@ -291,6 +307,7 @@ func TestNode_TimeAccuracy(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
+
 	id, err := node.Generate()
 	if err != nil {
 		t.Fatalf("failed to generate ID: %v", err)
@@ -331,6 +348,7 @@ func TestNode_IDComponents(t *testing.T) {
 		if decomposed.Timestamp != tt.timestamp {
 			t.Errorf("timestamp = %v, want %v", decomposed.Timestamp, tt.timestamp)
 		}
+
 		if decomposed.Sequence != tt.sequence {
 			t.Errorf("sequence = %v, want %v", decomposed.Sequence, tt.sequence)
 		}
@@ -395,9 +413,10 @@ func TestNode_ClockDrift(t *testing.T) {
 		node.time = timestamp + 10 // Set 10ms drift
 
 		id, err := node.Generate()
-		if err != ErrTimeMovedBackwards {
+		if !errors.Is(err, ErrTimeMovedBackwards) {
 			t.Errorf("expected ErrTimeMovedBackwards, got %v (id=%v)", err, id)
 		}
+
 		if id != 0 {
 			t.Errorf("expected id = 0 on error, got %v", id)
 		}
@@ -421,6 +440,7 @@ func TestNode_ClockDrift(t *testing.T) {
 		if decomposed.MachineID != 1 {
 			t.Errorf("machine ID = %v, want 1 (id=%v)", decomposed.MachineID, id)
 		}
+
 		if decomposed.Timestamp != timestamp+1 {
 			t.Errorf("timestamp = %v, want %v (id=%v)", decomposed.Timestamp, timestamp+1, id)
 		}
@@ -443,6 +463,7 @@ func TestNode_ClockDrift(t *testing.T) {
 		if decomposed.MachineID != 1 {
 			t.Errorf("machine ID = %v, want 1 (id=%v)", decomposed.MachineID, id)
 		}
+
 		if decomposed.Timestamp < timestamp {
 			t.Errorf("timestamp = %v, should be >= %v (id=%v)", decomposed.Timestamp, timestamp, id)
 		}
@@ -484,7 +505,8 @@ func TestNode_SequenceWait(t *testing.T) {
 	// DEADLOCK/INFINITE LOOP.
 
 	// This confirms `Generate` holding lock during wait is problematic for mock time updates if they require lock.
-	// But even if setMockTime didn't require lock, the loop logic for mock time read `now = *n.mockTime` is just reading a memory location.
+	// But even if setMockTime didn't require lock, the loop logic for mock time read `now = *n.mockTime` is just reading
+	// a memory location.
 	// If we update that location unsafely, we might race.
 	// But since we are locked, we can't update safely.
 
@@ -541,13 +563,13 @@ func TestNode_SequenceWait(t *testing.T) {
 	if decomposed.Sequence != 0 {
 		t.Errorf("expected sequence reset to 0, got %d", decomposed.Sequence)
 	}
-
 }
 
 func TestNode_GenerateStress(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping stress test in short mode")
 	}
+
 	runConcurrentTest(t, 50, 10000)
 }
 
@@ -580,6 +602,7 @@ func TestNode_MaxTimestampBoundary(t *testing.T) {
 		t.Error("expected error for timestamp beyond 42-bit limit")
 	} else {
 		expectedTimestamp := int64(1 << timestampBits)
+
 		expectedError := fmt.Sprintf("timestamp out of range: %d", expectedTimestamp)
 		if err.Error() != expectedError {
 			t.Errorf("unexpected error message: got %v, want %v", err, expectedError)
@@ -727,6 +750,7 @@ func TestNode_BitPatternEdgeCases(t *testing.T) {
 			if decomposed.Timestamp != tt.timestamp {
 				t.Errorf("timestamp mismatch, got %d, want %d", decomposed.Timestamp, tt.timestamp)
 			}
+
 			if decomposed.Sequence != tt.sequence {
 				t.Errorf("sequence mismatch, got %d, want %d", decomposed.Sequence, tt.sequence)
 			}
@@ -742,10 +766,14 @@ func TestNode_MillisecondPrecision(t *testing.T) {
 
 	// Generate IDs with precise timing
 	start := time.Now()
-	var lastID uint64
-	var lastTime time.Time
+
+	var (
+		lastID   uint64
+		lastTime time.Time
+	)
 
 	// Generate IDs for 10ms
+
 	for time.Since(start) < 10*time.Millisecond {
 		id, err := node.Generate()
 		if err != nil {
@@ -764,6 +792,7 @@ func TestNode_MillisecondPrecision(t *testing.T) {
 			// Check millisecond precision
 			if diff > time.Millisecond {
 				decomp1 := node.Decompose(lastID)
+
 				decomp2 := node.Decompose(id)
 				if decomp2.Timestamp-decomp1.Timestamp > 1 {
 					t.Errorf("time gap too large: %d ms", decomp2.Timestamp-decomp1.Timestamp)

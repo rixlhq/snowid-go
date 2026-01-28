@@ -15,23 +15,23 @@ import (
 )
 
 const (
-	// Bit lengths of SnowID ID parts
+	// Bit lengths of SnowID ID parts.
 	timestampBits uint8 = 42 // Extended from Twitter's 41 bits to Discord's 42 bits
 	machineIDBits uint8 = 10
 	sequenceBits  uint8 = 12
 
-	// Max values for SnowID ID parts
+	// Max values for SnowID ID parts.
 	maxMachineID = int64(-1) ^ (int64(-1) << machineIDBits) // 1023
 	maxSequence  = int64(-1) ^ (int64(-1) << sequenceBits)  // 4095
 
-	// Bit shifts for composing SnowID ID
+	// Bit shifts for composing SnowID ID.
 	timestampLeftShift = machineIDBits + sequenceBits
 	machineIDShift     = sequenceBits
 
-	// Time constants
+	// Time constants.
 	millisecond = int64(time.Millisecond / time.Nanosecond)
 
-	// Pre-calculated masks and limits
+	// Pre-calculated masks and limits.
 	timestampMask = uint64((1 << timestampBits) - 1)
 	machineIDMask = uint64((1 << machineIDBits) - 1)
 	sequenceMask  = uint64((1 << sequenceBits) - 1)
@@ -44,11 +44,11 @@ var (
 	ErrSequenceOverflow   = errors.New("sequence overflow")
 	ErrInvalidEpoch       = errors.New("epoch must be a time in the past")
 
-	// Default epoch is set to 2024-01-01 00:00:00 UTC
+	// Default epoch is set to 2024-01-01 00:00:00 UTC.
 	defaultEpoch = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 )
 
-// Node represents a snowid generator node/machine
+// Node represents a snowid generator node/machine.
 type Node struct {
 	mu               sync.Mutex
 	epoch            time.Time
@@ -60,12 +60,12 @@ type Node struct {
 	mockTime         *int64
 }
 
-// NewNode creates a new snowid node that can generate unique IDs
+// NewNode creates a new snowid node that can generate unique IDs.
 func NewNode(machineID int64) (*Node, error) {
 	return NewNodeWithEpoch(machineID, defaultEpoch)
 }
 
-// NewNodeWithEpoch creates a new snowid node with custom epoch
+// NewNodeWithEpoch creates a new snowid node with custom epoch.
 func NewNodeWithEpoch(machineID int64, epoch time.Time) (*Node, error) {
 	if machineID < 0 || machineID > maxMachineID {
 		return nil, ErrMachineIDTooLarge
@@ -86,14 +86,15 @@ func NewNodeWithEpoch(machineID int64, epoch time.Time) (*Node, error) {
 	}, nil
 }
 
-// setMockTime sets a mock time for testing purposes
+// setMockTime sets a mock time for testing purposes.
 func (n *Node) setMockTime(t *int64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
 	n.mockTime = t
 }
 
-// Generate creates and returns a unique snowid ID
+// Generate creates and returns a unique snowid ID.
 func (n *Node) Generate() (uint64, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -104,6 +105,7 @@ func (n *Node) Generate() (uint64, error) {
 	} else {
 		now = time.Now().UTC().UnixNano() / millisecond
 	}
+
 	timestamp := now - n.epochMs
 
 	if uint64(timestamp) >= maxTimestamp {
@@ -115,6 +117,7 @@ func (n *Node) Generate() (uint64, error) {
 		if diff > 5 { // Tolerance for small clock drifts (e.g. NTP updates)
 			return 0, ErrTimeMovedBackwards
 		}
+
 		timestamp = n.time
 	}
 
@@ -137,6 +140,7 @@ func (n *Node) Generate() (uint64, error) {
 				} else {
 					now = time.Now().UTC().UnixNano() / millisecond
 				}
+
 				timestamp = now - n.epochMs
 			}
 		}
@@ -149,21 +153,21 @@ func (n *Node) Generate() (uint64, error) {
 	return n.createID(timestamp, n.sequence), nil
 }
 
-// createID composes a 64-bit snowid ID from timestamp and sequence
+// createID composes a 64-bit snowid ID from timestamp and sequence.
 func (n *Node) createID(timestamp, sequence int64) uint64 {
 	return (uint64(timestamp)&timestampMask)<<timestampLeftShift |
 		n.shiftedMachineID |
 		(uint64(sequence) & sequenceMask)
 }
 
-// ID Decompose breaks down a snowid ID into its components
+// ID Decompose breaks down a snowid ID into its components.
 type ID struct {
 	Timestamp int64
 	MachineID int64
 	Sequence  int64
 }
 
-// Decompose extracts the timestamp, machine ID and sequence from a snowid ID
+// Decompose extracts the timestamp, machine ID and sequence from a snowid ID.
 func (n *Node) Decompose(id uint64) ID {
 	// Convert to uint64 for bit operations
 	uid := id
@@ -176,7 +180,7 @@ func (n *Node) Decompose(id uint64) ID {
 	}
 }
 
-// Time returns the time at which the snowid ID was generated
+// Time returns the time at which the snowid ID was generated.
 func (n *Node) Time(id uint64) time.Time {
 	decomposed := n.Decompose(id)
 	return n.epoch.Add(time.Duration(decomposed.Timestamp) * time.Millisecond)
