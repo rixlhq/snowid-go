@@ -103,7 +103,7 @@ func (n *Node) Generate() (uint64, error) {
 	if n.mockTime != nil {
 		now = *n.mockTime
 	} else {
-		now = time.Now().UTC().UnixNano() / millisecond
+		now = time.Now().UnixNano() / millisecond
 	}
 
 	timestamp := now - n.epochMs
@@ -124,23 +124,14 @@ func (n *Node) Generate() (uint64, error) {
 	if n.time == timestamp {
 		n.sequence = (n.sequence + 1) & int64(sequenceMask)
 		if n.sequence == 0 {
-			for timestamp <= n.time {
-				if n.mockTime != nil {
-					// In mock mode, we can't really wait for time to pass unless mock time changes,
-					// which won't happen inside the lock.
-					// This logic usually implies a busy wait or check.
-					// For simple logic, we just fail or bump mock time if possible,
-					// but standard Snowflake waits.
-					// Since we can't spin-wait on a mock variable effectively inside the lock without blocking callers,
-					// we assume tests won't hit this or will handle checking logic.
-					// Let's stick to standard time wait.
-					// Actually, for mock time in tests, we might get stuck loop if we don't break.
-					// But standard usage is real time.
-					now = *n.mockTime
-				} else {
-					now = time.Now().UTC().UnixNano() / millisecond
-				}
+			// Sequence overflow - need to wait for next millisecond
+			if n.mockTime != nil {
+				// In mock mode, cannot wait for time to advance
+				return 0, ErrSequenceOverflow
+			}
 
+			for timestamp <= n.time {
+				now = time.Now().UnixNano() / millisecond
 				timestamp = now - n.epochMs
 			}
 		}
