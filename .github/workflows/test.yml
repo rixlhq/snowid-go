@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    
+
     steps:
       - name: 🧰 Checkout code
         uses: actions/checkout@v6
@@ -30,6 +30,9 @@ jobs:
       - name: ⬇️ Verify dependencies
         run: go mod verify
 
+      - name: 🛠️ Build lib
+        run: go build -v ./...
+
       - name: 🏃 Run tests
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic -coverpkg=./... ./...
 
@@ -37,25 +40,23 @@ jobs:
         uses: vladopajic/go-test-coverage@v2
         with:
           config: ./.testcoverage.yml
-          git-token: ${{ secrets.GITHUB_TOKEN }}
-          git-branch: main
 
       - name: 📊 Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.out
           flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: qeeqez/snowid-go
 
   gostatic:
     runs-on: ubuntu-latest
-
     steps:
       - name: 🧰 Checkout code
         uses: actions/checkout@v6
 
-      - name: ⬇️ Set up Go
+      - name: ⬇️ Setup Go
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -68,7 +69,6 @@ jobs:
 
   govet:
     runs-on: ubuntu-latest
-    
     steps:
       - name: 🧰 Checkout code
         uses: actions/checkout@v6
@@ -83,7 +83,6 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
-    
     steps:
       - name: 🧰 Checkout code
         uses: actions/checkout@v6
@@ -97,3 +96,17 @@ jobs:
         uses: securego/gosec@master
         with:
           args: ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🧰 Checkout code
+        uses: actions/checkout@v6
+
+      - name: ⬇️ Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: 🏃 Run linter
+        uses: golangci/golangci-lint-action@v9
