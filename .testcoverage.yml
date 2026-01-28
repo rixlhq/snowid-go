@@ -4,10 +4,10 @@ profile: coverage.out
 # Coverage thresholds percentages, values should be in range [0-100]
 threshold:
   # Minimum coverage percentage required for individual files
-  file: 80
+  file: 97
   
   # Minimum coverage percentage required for each package
-  package: 80
+  package: 97
   
   # Minimum overall project coverage percentage required
-  total: 80
+  total: 97
