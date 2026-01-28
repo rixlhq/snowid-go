@@ -1,0 +1,48 @@
+version: "2"
+linters:
+  default: all
+  disable:
+    - contextcheck
+    - cyclop
+    - depguard
+    - dupl
+    - err113
+    - exhaustruct
+    - forcetypeassert
+    - funlen
+    - gochecknoglobals
+    - godox
+    - gosec
+    - intrange
+    - ireturn
+    - mnd
+    - nestif
+    - nlreturn
+    - revive
+    - tagalign
+    - tagliatelle
+    - varnamelen
+    - wrapcheck
+    - wsl
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - cmd/convert/main.go
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    generated: lax
+    paths:
+      - cmd/convert/main.go
+      - third_party$
+      - builtin$
+      - examples$
