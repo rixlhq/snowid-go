@@ -79,7 +79,7 @@ func TestNode_Generate(t *testing.T) {
 	}
 
 	// Generate multiple IDs
-	var ids []int64
+	var ids []uint64
 	for i := 0; i < 100; i++ {
 		id, err := node.Generate()
 		if err != nil {
@@ -89,7 +89,7 @@ func TestNode_Generate(t *testing.T) {
 	}
 
 	// Check uniqueness
-	seen := make(map[int64]bool)
+	seen := make(map[uint64]bool)
 	for _, id := range ids {
 		if seen[id] {
 			t.Error("generated duplicate ID")
@@ -112,7 +112,7 @@ func runConcurrentTest(t *testing.T, workers, idsPerWorker int) {
 	}
 
 	var wg sync.WaitGroup
-	idChan := make(chan int64, workers*idsPerWorker)
+	idChan := make(chan uint64, workers*idsPerWorker)
 	errChan := make(chan error, workers)
 
 	start := time.Now()
@@ -146,8 +146,8 @@ func runConcurrentTest(t *testing.T, workers, idsPerWorker int) {
 	}
 
 	// Verify IDs
-	seen := make(map[int64]bool)
-	var ids []int64
+	seen := make(map[uint64]bool)
+	var ids []uint64
 	for id := range idChan {
 		if seen[id] {
 			t.Errorf("duplicate ID found: %d", id)
@@ -659,7 +659,7 @@ func TestNode_DecompositionEdgeCases(t *testing.T) {
 
 	tests := []struct {
 		name string
-		id   int64
+		id   uint64
 		want ID
 	}{
 		{
@@ -684,9 +684,9 @@ func TestNode_DecompositionEdgeCases(t *testing.T) {
 			name: "alternating bits",
 			id:   0x555555555555,
 			want: ID{
-				Timestamp: 0x555555555555 >> (machineIDBits + sequenceBits),
-				MachineID: (0x555555555555 >> sequenceBits) & maxMachineID,
-				Sequence:  0x555555555555 & maxSequence,
+				Timestamp: int64(0x555555555555 >> (machineIDBits + sequenceBits)),
+				MachineID: (int64(0x555555555555) >> sequenceBits) & maxMachineID,
+				Sequence:  int64(0x555555555555) & maxSequence,
 			},
 		},
 	}
@@ -742,7 +742,7 @@ func TestNode_MillisecondPrecision(t *testing.T) {
 
 	// Generate IDs with precise timing
 	start := time.Now()
-	var lastID int64
+	var lastID uint64
 	var lastTime time.Time
 
 	// Generate IDs for 10ms

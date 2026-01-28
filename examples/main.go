@@ -64,7 +64,7 @@ func main() {
 	fmt.Println("\n=== Concurrent Generation ===")
 	// Demonstrate concurrent ID generation
 	var wg sync.WaitGroup
-	idChan := make(chan int64, 10)
+	idChan := make(chan uint64, 10)
 
 	// Generate 10 IDs concurrently
 	for i := 0; i < 10; i++ {
@@ -87,7 +87,7 @@ func main() {
 	}()
 
 	// Collect and print IDs
-	var ids []int64
+	var ids []uint64
 	for id := range idChan {
 		ids = append(ids, id)
 	}

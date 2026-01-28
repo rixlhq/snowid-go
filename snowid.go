@@ -94,7 +94,7 @@ func (n *Node) setMockTime(t *int64) {
 }
 
 // Generate creates and returns a unique snowid ID
-func (n *Node) Generate() (int64, error) {
+func (n *Node) Generate() (uint64, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -150,12 +150,10 @@ func (n *Node) Generate() (int64, error) {
 }
 
 // createID composes a 64-bit snowid ID from timestamp and sequence
-func (n *Node) createID(timestamp, sequence int64) int64 {
-	return int64(
-		(uint64(timestamp)&timestampMask)<<timestampLeftShift |
-			n.shiftedMachineID |
-			(uint64(sequence) & sequenceMask),
-	)
+func (n *Node) createID(timestamp, sequence int64) uint64 {
+	return (uint64(timestamp)&timestampMask)<<timestampLeftShift |
+		n.shiftedMachineID |
+		(uint64(sequence) & sequenceMask)
 }
 
 // ID Decompose breaks down a snowid ID into its components
@@ -166,9 +164,9 @@ type ID struct {
 }
 
 // Decompose extracts the timestamp, machine ID and sequence from a snowid ID
-func (n *Node) Decompose(id int64) ID {
+func (n *Node) Decompose(id uint64) ID {
 	// Convert to uint64 for bit operations
-	uid := uint64(id)
+	uid := id
 
 	// Extract components using masks
 	return ID{
@@ -179,7 +177,7 @@ func (n *Node) Decompose(id int64) ID {
 }
 
 // Time returns the time at which the snowid ID was generated
-func (n *Node) Time(id int64) time.Time {
+func (n *Node) Time(id uint64) time.Time {
 	decomposed := n.Decompose(id)
 	return n.epoch.Add(time.Duration(decomposed.Timestamp) * time.Millisecond)
 }
