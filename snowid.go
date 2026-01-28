@@ -60,6 +60,13 @@ type Node struct {
 	mockTime         *int64
 }
 
+// ID breaks down a snowid ID into its components.
+type ID struct {
+	Timestamp int64
+	MachineID int64
+	Sequence  int64
+}
+
 // NewNode creates a new snowid node that can generate unique IDs.
 func NewNode(machineID int64) (*Node, error) {
 	return NewNodeWithEpoch(machineID, defaultEpoch)
@@ -84,14 +91,6 @@ func NewNodeWithEpoch(machineID int64, epoch time.Time) (*Node, error) {
 		sequence:         0,
 		mockTime:         nil,
 	}, nil
-}
-
-// setMockTime sets a mock time for testing purposes.
-func (n *Node) setMockTime(t *int64) {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	n.mockTime = t
 }
 
 // Generate creates and returns a unique snowid ID.
@@ -144,20 +143,6 @@ func (n *Node) Generate() (uint64, error) {
 	return n.createID(timestamp, n.sequence), nil
 }
 
-// createID composes a 64-bit snowid ID from timestamp and sequence.
-func (n *Node) createID(timestamp, sequence int64) uint64 {
-	return (uint64(timestamp)&timestampMask)<<timestampLeftShift |
-		n.shiftedMachineID |
-		(uint64(sequence) & sequenceMask)
-}
-
-// ID Decompose breaks down a snowid ID into its components.
-type ID struct {
-	Timestamp int64
-	MachineID int64
-	Sequence  int64
-}
-
 // Decompose extracts the timestamp, machine ID and sequence from a snowid ID.
 func (n *Node) Decompose(id uint64) ID {
 	return ID{
@@ -176,4 +161,19 @@ func (n *Node) Time(id uint64) time.Time {
 // MaxMachineID returns the maximum allowed machine ID (1023 with default 10-bit config).
 func (n *Node) MaxMachineID() int64 {
 	return maxMachineID
+}
+
+// setMockTime sets a mock time for testing purposes.
+func (n *Node) setMockTime(t *int64) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.mockTime = t
+}
+
+// createID composes a 64-bit snowid ID from timestamp and sequence.
+func (n *Node) createID(timestamp, sequence int64) uint64 {
+	return (uint64(timestamp)&timestampMask)<<timestampLeftShift |
+		n.shiftedMachineID |
+		(uint64(sequence) & sequenceMask)
 }
