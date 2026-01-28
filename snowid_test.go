@@ -474,92 +474,41 @@ func TestNode_SequenceWait(t *testing.T) {
 		t.Fatalf("failed to create node: %v", err)
 	}
 
-	// We need to simulate a full sequence to trigger the wait loop.
-	// We can use a mock time that stays constant for the check loop but advances later?
-	// Actually, the loop does: now = time.Now()...
-	// So we just need to ensure we are at max sequence and time hasn't naturally advanced yet.
-	// But `Generate` calls `time.Now()` inside the loop.
-	// To reliably test this without race or slowness, we can use mock time.
+	// To trigger the sequence wait loop (busy-wait for next millisecond), we need:
+	// 1. n.time == current timestamp
+	// 2. n.sequence at max so it overflows to 0
+	// 3. Not using mock time (so it uses real time.Now())
 
-	// We need to trigger the sequence wait loop.
-	// We set the current time, max sequence.
-	// Generate() will check time, see it's same, increment sequence -> overflow.
-	// Then it enters loop: while timestamp <= n.time ...
-	// Since we are mocking, "now" will stick to initialTime unless we change it.
+	// First, generate an ID to get a valid timestamp
+	id, err := node.Generate()
+	if err != nil {
+		t.Fatalf("failed to generate initial ID: %v", err)
+	}
 
-	// Actually, Node spins on:
-	// if n.mockTime != nil { now = *n.mockTime }
-	// We can't safely change *n.mockTime from another goroutine while main loop holds lock
-	// (we fixed the race with mutex, but the loop in Generate holds the mutex? NO!)
+	// Get the timestamp from the ID we just generated
+	decomposed := node.Decompose(id)
 
-	// Wait, let's look at Generate logic again:
-	// n.mu.Lock() ...
-	// if n.sequence == 0 { for timestamp <= n.time { ... } }
-
-	// THE LOOP IS INSIDE THE LOCK!
-	// This means we CANNOT update mockTime from another goroutine while Generate is stuck in the loop!
-	// The loop holds the lock, so setMockTime (which needs lock) will hang.
-	// And Generate loops forever because mockTime never changes.
-	// DEADLOCK/INFINITE LOOP.
-
-	// This confirms `Generate` holding lock during wait is problematic for mock time updates if they require lock.
-	// But even if setMockTime didn't require lock, the loop logic for mock time read `now = *n.mockTime` is just reading
-	// a memory location.
-	// If we update that location unsafely, we might race.
-	// But since we are locked, we can't update safely.
-
-	// Real-world: time.Now() changes on its own, outside our lock.
-
-	// Fix: createID logic or Generate logic needs to be aware.
-	// Standard Snowflake: busy wait is fine for real time.
-	// For test: we can't easily test the "wait loop" with `setMockTime` if `setMockTime` requires the SAME lock.
-	// We should probably rely on `time.Now()` for this test and just wait 1ms?
-	// OR, we make `setMockTime` NOT take the lock?
-	// The `mockTime` pointer is read inside lock.
-	// If we change the value pointed to *t, we race?
-	// `mockTime` is `*int64`. The `int64` value it points to can be changed?
-	// `now = *n.mockTime`.
-
-	// Let's use a shared integer and update it?
-
-	// Reset state
-	node.time = 0
+	// Set sequence to max value (so next increment overflows to 0)
 	node.sequence = maxSequence
 
-	// We start a goroutine to advance time
-	// We need to wait a tiny bit to let Generate enter the loop?
-	// But Generate takes lock immediately.
-	// Logic:
-	// 1. Generate takes lock.
-	// 2. Checks sequence overflow.
-	// 3. Loops `for timestamp <= n.time`.
-	// 4. Inside loop: `now = *n.mockTime`.
+	// Set node.time to current timestamp so the condition n.time == timestamp is true
+	node.time = decomposed.Timestamp
 
-	// If we change `sharedTime` from another goroutine (atomic store?), the loop will see it?
-	// Yes, but we need to avoid race detector complaining.
-	// `atomic.StoreInt64` vs `atomic.LoadInt64`.
-	// The usage in `Generate` for mock time: `now = *n.mockTime` is a plain load.
-	// We can't use atomic load there unless we change main code.
-
-	// Alternative: Don't use mock time for this test. Use real time.
-	// It's just 1ms wait.
-
-	node.setMockTime(nil)
-
-	// Ensure we are close to a millisecond boundary so we don't wait too long?
-	// No, standard `time.sleep`?
-
-	// Let's just run it with real time.
-
-	id, err := node.Generate()
+	// Generate should wait for next millisecond and succeed
+	id2, err := node.Generate()
 	if err != nil {
 		t.Fatalf("failed to generate ID with sequence wait: %v", err)
 	}
 
-	decomposed := node.Decompose(id)
-	// We can't predict exact timestamp, but it should be > old time and sequence 0.
-	if decomposed.Sequence != 0 {
-		t.Errorf("expected sequence reset to 0, got %d", decomposed.Sequence)
+	// Verify sequence was reset to 0
+	decomposed2 := node.Decompose(id2)
+	if decomposed2.Sequence != 0 {
+		t.Errorf("expected sequence reset to 0, got %d", decomposed2.Sequence)
+	}
+
+	// Verify timestamp advanced (or at least didn't go backwards)
+	if decomposed2.Timestamp < decomposed.Timestamp {
+		t.Errorf("timestamp went backwards: %d < %d", decomposed2.Timestamp, decomposed.Timestamp)
 	}
 }
 
@@ -800,5 +749,42 @@ func TestNode_MillisecondPrecision(t *testing.T) {
 
 		lastID = id
 		lastTime = currentTime
+	}
+}
+
+func TestNode_MaxMachineID(t *testing.T) {
+	node, err := NewNode(0)
+	if err != nil {
+		t.Fatalf("failed to create node: %v", err)
+	}
+
+	got := node.MaxMachineID()
+	if got != maxMachineID {
+		t.Errorf("MaxMachineID() = %v, want %v", got, maxMachineID)
+	}
+
+	if got != 1023 {
+		t.Errorf("MaxMachineID() = %v, want 1023 (default 10-bit config)", got)
+	}
+}
+
+func TestNode_SequenceOverflowMockMode(t *testing.T) {
+	node, err := NewNode(1)
+	if err != nil {
+		t.Fatalf("failed to create node: %v", err)
+	}
+
+	// Set up mock time
+	mockTime := node.epochMs + 1000 // 1 second after epoch
+	node.setMockTime(&mockTime)
+
+	// Set sequence to max value and same timestamp
+	node.time = 1000
+	node.sequence = maxSequence
+
+	// Generate should return ErrSequenceOverflow in mock mode
+	_, err = node.Generate()
+	if !errors.Is(err, ErrSequenceOverflow) {
+		t.Errorf("expected ErrSequenceOverflow, got %v", err)
 	}
 }
