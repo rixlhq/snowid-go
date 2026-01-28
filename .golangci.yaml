@@ -24,6 +24,9 @@ linters:
     - varnamelen
     - wrapcheck
     - wsl
+    - wsl_v5
+    - paralleltest
+    - testpackage
   exclusions:
     generated: lax
     presets:

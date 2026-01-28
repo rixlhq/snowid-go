@@ -82,7 +82,7 @@ func TestNode_Generate(t *testing.T) {
 	}
 
 	// Generate multiple IDs
-	var ids []uint64
+	ids := make([]uint64, 0, 100)
 
 	for range 100 {
 		id, err := node.Generate()
@@ -126,9 +126,7 @@ func runConcurrentTest(t *testing.T, workers, idsPerWorker int) {
 	start := time.Now()
 	// Generate IDs concurrently
 	for range workers {
-
 		wg.Go(func() {
-
 			for range idsPerWorker {
 				id, err := node.Generate()
 				if err != nil {
@@ -491,7 +489,7 @@ func TestNode_SequenceWait(t *testing.T) {
 
 	// Actually, Node spins on:
 	// if n.mockTime != nil { now = *n.mockTime }
-	// We can't change *n.mockTime safely if main loop is reading it in a tight loop and we want to change it from another goroutine
+	// We can't safely change *n.mockTime from another goroutine while main loop holds lock
 	// (we fixed the race with mutex, but the loop in Generate holds the mutex? NO!)
 
 	// Wait, let's look at Generate logic again:
