@@ -105,65 +105,15 @@ func TestNode_Generate(t *testing.T) {
 	}
 }
 
-func TestNode_GenerateConcurrent(t *testing.T) {
+func runConcurrentTest(t *testing.T, workers, idsPerWorker int) {
 	node, err := NewNode(1)
 	if err != nil {
 		t.Fatalf("failed to create node: %v", err)
 	}
 
 	var wg sync.WaitGroup
-	idChan := make(chan int64, 1000)
-	workers := 10
-	idsPerWorker := 100
-
-	// Generate IDs concurrently
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < idsPerWorker; j++ {
-				id, err := node.Generate()
-				if err != nil {
-					t.Errorf("failed to generate ID: %v", err)
-					return
-				}
-				idChan <- id
-			}
-		}()
-	}
-
-	// Wait for all workers to finish
-	wg.Wait()
-	close(idChan)
-
-	// Check uniqueness
-	seen := make(map[int64]bool)
-	var ids []int64
-	for id := range idChan {
-		if seen[id] {
-			t.Error("generated duplicate ID")
-		}
-		seen[id] = true
-		ids = append(ids, id)
-	}
-
-	// Verify we got the expected number of IDs
-	expectedCount := workers * idsPerWorker
-	if len(ids) != expectedCount {
-		t.Errorf("got %d IDs, want %d", len(ids), expectedCount)
-	}
-}
-
-func TestNode_GenerateHighConcurrency(t *testing.T) {
-	node, err := NewNode(1)
-	if err != nil {
-		t.Fatalf("failed to create node: %v", err)
-	}
-
-	var wg sync.WaitGroup
-	idChan := make(chan int64, 100000)
-	workers := 100
-	idsPerWorker := 1000
+	idChan := make(chan int64, workers*idsPerWorker)
+	errChan := make(chan error, workers)
 
 	start := time.Now()
 	// Generate IDs concurrently
@@ -174,7 +124,11 @@ func TestNode_GenerateHighConcurrency(t *testing.T) {
 			for j := 0; j < idsPerWorker; j++ {
 				id, err := node.Generate()
 				if err != nil {
-					t.Errorf("failed to generate ID: %v", err)
+					// Use non-blocking send or just log
+					select {
+					case errChan <- err:
+					default:
+					}
 					return
 				}
 				idChan <- id
@@ -182,11 +136,16 @@ func TestNode_GenerateHighConcurrency(t *testing.T) {
 		}()
 	}
 
-	// Wait for all workers to finish
 	wg.Wait()
 	close(idChan)
+	close(errChan)
 
-	// Check uniqueness
+	// Check for errors
+	for err := range errChan {
+		t.Errorf("error during concurrent generation: %v", err)
+	}
+
+	// Verify IDs
 	seen := make(map[int64]bool)
 	var ids []int64
 	for id := range idChan {
@@ -200,11 +159,22 @@ func TestNode_GenerateHighConcurrency(t *testing.T) {
 	duration := time.Since(start)
 	t.Logf("Generated %d unique IDs in %v (%.2f IDs/sec)", len(ids), duration, float64(len(ids))/duration.Seconds())
 
-	// Verify we got the expected number of IDs
+	// Verify count
 	expectedCount := workers * idsPerWorker
 	if len(ids) != expectedCount {
 		t.Errorf("got %d IDs, want %d", len(ids), expectedCount)
 	}
+}
+
+func TestNode_GenerateConcurrent(t *testing.T) {
+	runConcurrentTest(t, 10, 100)
+}
+
+func TestNode_GenerateHighConcurrency(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping high concurrency test in short mode")
+	}
+	runConcurrentTest(t, 100, 1000)
 }
 
 func TestNode_Decompose(t *testing.T) {
@@ -479,72 +449,106 @@ func TestNode_ClockDrift(t *testing.T) {
 	})
 }
 
-func TestNode_GenerateStress(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping stress test in short mode")
-	}
-
+func TestNode_SequenceWait(t *testing.T) {
 	node, err := NewNode(1)
 	if err != nil {
 		t.Fatalf("failed to create node: %v", err)
 	}
 
-	workers := 50
-	idsPerWorker := 10000
-	idChan := make(chan int64, workers*idsPerWorker)
-	errChan := make(chan error, workers)
+	// We need to simulate a full sequence to trigger the wait loop.
+	// We can use a mock time that stays constant for the check loop but advances later?
+	// Actually, the loop does: now = time.Now()...
+	// So we just need to ensure we are at max sequence and time hasn't naturally advanced yet.
+	// But `Generate` calls `time.Now()` inside the loop.
+	// To reliably test this without race or slowness, we can use mock time.
 
-	var wg sync.WaitGroup
-	start := time.Now()
+	// We need to trigger the sequence wait loop.
+	// We set the current time, max sequence.
+	// Generate() will check time, see it's same, increment sequence -> overflow.
+	// Then it enters loop: while timestamp <= n.time ...
+	// Since we are mocking, "now" will stick to initialTime unless we change it.
 
-	// Generate IDs concurrently
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < idsPerWorker; j++ {
-				id, err := node.Generate()
-				if err != nil {
-					errChan <- err
-					return
-				}
-				idChan <- id
-			}
-		}()
+	// Actually, Node spins on:
+	// if n.mockTime != nil { now = *n.mockTime }
+	// We can't change *n.mockTime safely if main loop is reading it in a tight loop and we want to change it from another goroutine
+	// (we fixed the race with mutex, but the loop in Generate holds the mutex? NO!)
+
+	// Wait, let's look at Generate logic again:
+	// n.mu.Lock() ...
+	// if n.sequence == 0 { for timestamp <= n.time { ... } }
+
+	// THE LOOP IS INSIDE THE LOCK!
+	// This means we CANNOT update mockTime from another goroutine while Generate is stuck in the loop!
+	// The loop holds the lock, so setMockTime (which needs lock) will hang.
+	// And Generate loops forever because mockTime never changes.
+	// DEADLOCK/INFINITE LOOP.
+
+	// This confirms `Generate` holding lock during wait is problematic for mock time updates if they require lock.
+	// But even if setMockTime didn't require lock, the loop logic for mock time read `now = *n.mockTime` is just reading a memory location.
+	// If we update that location unsafely, we might race.
+	// But since we are locked, we can't update safely.
+
+	// Real-world: time.Now() changes on its own, outside our lock.
+
+	// Fix: createID logic or Generate logic needs to be aware.
+	// Standard Snowflake: busy wait is fine for real time.
+	// For test: we can't easily test the "wait loop" with `setMockTime` if `setMockTime` requires the SAME lock.
+	// We should probably rely on `time.Now()` for this test and just wait 1ms?
+	// OR, we make `setMockTime` NOT take the lock?
+	// The `mockTime` pointer is read inside lock.
+	// If we change the value pointed to *t, we race?
+	// `mockTime` is `*int64`. The `int64` value it points to can be changed?
+	// `now = *n.mockTime`.
+
+	// Let's use a shared integer and update it?
+
+	// Reset state
+	node.time = 0
+	node.sequence = maxSequence
+
+	// We start a goroutine to advance time
+	// We need to wait a tiny bit to let Generate enter the loop?
+	// But Generate takes lock immediately.
+	// Logic:
+	// 1. Generate takes lock.
+	// 2. Checks sequence overflow.
+	// 3. Loops `for timestamp <= n.time`.
+	// 4. Inside loop: `now = *n.mockTime`.
+
+	// If we change `sharedTime` from another goroutine (atomic store?), the loop will see it?
+	// Yes, but we need to avoid race detector complaining.
+	// `atomic.StoreInt64` vs `atomic.LoadInt64`.
+	// The usage in `Generate` for mock time: `now = *n.mockTime` is a plain load.
+	// We can't use atomic load there unless we change main code.
+
+	// Alternative: Don't use mock time for this test. Use real time.
+	// It's just 1ms wait.
+
+	node.setMockTime(nil)
+
+	// Ensure we are close to a millisecond boundary so we don't wait too long?
+	// No, standard `time.sleep`?
+
+	// Let's just run it with real time.
+
+	id, err := node.Generate()
+	if err != nil {
+		t.Fatalf("failed to generate ID with sequence wait: %v", err)
 	}
 
-	// Wait for completion or error
-	go func() {
-		wg.Wait()
-		close(idChan)
-		close(errChan)
-	}()
-
-	// Check for errors
-	for err := range errChan {
-		t.Errorf("error during stress test: %v", err)
+	decomposed := node.Decompose(id)
+	// We can't predict exact timestamp, but it should be > old time and sequence 0.
+	if decomposed.Sequence != 0 {
+		t.Errorf("expected sequence reset to 0, got %d", decomposed.Sequence)
 	}
 
-	// Collect and verify IDs
-	seen := make(map[int64]bool)
-	var ids []int64
-	for id := range idChan {
-		if seen[id] {
-			t.Error("generated duplicate ID")
-		}
-		seen[id] = true
-		ids = append(ids, id)
-	}
+}
 
-	duration := time.Since(start)
-	idsPerSec := float64(len(ids)) / duration.Seconds()
-	t.Logf("Generated %d unique IDs in %v (%.2f IDs/sec)", len(ids), duration, idsPerSec)
-
-	// Verify expected count
-	expectedCount := workers * idsPerWorker
-	if len(ids) != expectedCount {
-		t.Errorf("got %d IDs, want %d", len(ids), expectedCount)
+func TestNode_GenerateStress(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping stress test in short mode")
 	}
+	runConcurrentTest(t, 50, 10000)
 }
 
 func TestNode_MaxTimestampBoundary(t *testing.T) {

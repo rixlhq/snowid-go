@@ -88,6 +88,8 @@ func NewNodeWithEpoch(machineID int64, epoch time.Time) (*Node, error) {
 
 // setMockTime sets a mock time for testing purposes
 func (n *Node) setMockTime(t *int64) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	n.mockTime = t
 }
 
@@ -109,7 +111,11 @@ func (n *Node) Generate() (int64, error) {
 	}
 
 	if timestamp < n.time {
-		return 0, ErrTimeMovedBackwards
+		diff := n.time - timestamp
+		if diff > 5 { // Tolerance for small clock drifts (e.g. NTP updates)
+			return 0, ErrTimeMovedBackwards
+		}
+		timestamp = n.time
 	}
 
 	if n.time == timestamp {
