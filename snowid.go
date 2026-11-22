@@ -90,6 +90,7 @@ func NewNodeWithEpoch(machineID int64, epoch time.Time) (*Node, error) {
 		time:             0,
 		sequence:         0,
 		mockTime:         nil,
+		mu:               sync.Mutex{},
 	}, nil
 }
 

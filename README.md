@@ -1,7 +1,6 @@
 # ❄️ SnowID Go
 
 [![Test](https://github.com/qeeqez/snowid-go/actions/workflows/test.yml/badge.svg)](https://github.com/qeeqez/snowid-go/actions/workflows/test.yml)
-[![Coverage Status](https://codecov.io/gh/qeeqez/snowid-go/graph/badge.svg)](https://codecov.io/gh/qeeqez/snowid-go)
 [![Go Report Card](https://goreportcard.com/badge/github.com/qeeqez/snowid-go)](https://goreportcard.com/report/github.com/qeeqez/snowid-go)
 [![GoDoc](https://godoc.org/github.com/qeeqez/snowid-go?status.svg)](https://godoc.org/github.com/qeeqez/snowid-go)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)

@@ -573,6 +573,7 @@ func TestNode_TimeComponentValidation(t *testing.T) {
 			name:      "time exactly at epoch",
 			mockTime:  node.epoch.UnixNano() / millisecond,
 			wantError: false,
+			errorMsg:  "",
 		},
 		{
 			name:      "time at max timestamp",
@@ -584,6 +585,7 @@ func TestNode_TimeComponentValidation(t *testing.T) {
 			name:      "time near max timestamp",
 			mockTime:  node.epoch.UnixNano()/millisecond + ((1 << timestampBits) * 9 / 10),
 			wantError: false,
+			errorMsg:  "",
 		},
 	}
 

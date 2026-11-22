@@ -1,7 +1,7 @@
 name: Test
 
 env:
-  GO_VERSION: '1.25'
+  GO_VERSION: '1.27'
 
 on:
   push:
@@ -40,15 +40,6 @@ jobs:
         uses: vladopajic/go-test-coverage@v2
         with:
           config: ./.testcoverage.yml
-
-      - name: 📊 Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
-        with:
-          files: ./coverage.out
-          flags: unittests
-          fail_ci_if_error: true
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: qeeqez/snowid-go
 
   gostatic:
     runs-on: ubuntu-latest
